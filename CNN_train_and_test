@@ -1,0 +1,46 @@
+import numpy as np
+from conv import Conv3x3 
+from maxpool import Maxpool2
+from softmax import Softmax 
+from ip import BinaryDatasetLoader
+
+DATASET_PATH = "dataset/path"
+
+loader = BinaryDatasetLoader(DATASET_PATH)
+X_train, y_train = loader.load_data("train_X.bin", "train_y.bin")
+X_test, y_test = loader.load_data("test_X.bin", "test_y.bin")
+
+conv = Conv3x3(8)
+pool = Maxpool2()
+softmax = Softmax(17672, 10)  # Must match expected input size (47*47*8 after pooling and convolution)
+
+def forward(image):
+    out = conv.forward(image)
+    out = pool.forward(out)
+    out = softmax.forward(out)
+    return out
+
+def train(num_epochs, learning_rate):
+    for epoch in range(num_epochs):
+        correct = 0
+        for i in range(len(X_train)):
+            out = forward(X_train[i])
+            pred = np.argmax(out)
+            if pred == y_train[i]:
+                correct += 1
+        acc = correct / len(X_train)
+        print(f"Epoch {epoch + 1}: Accuracy {acc:.4f}")
+
+def predict_unlabeled():
+    X_unlabeled = loader.load_unlabeled_data()
+    predictions = []
+    for i in range(len(X_unlabeled)):
+        out = forward(X_unlabeled[i])
+        pred_class = np.argmax(out)
+        certainty = np.max(out)
+        predictions.append((pred_class, certainty))
+        print(f"Image {i}: Predicted Class = {pred_class}, Certainty = {certainty:.4f}")
+
+train(num_epochs=5, learning_rate=0.01)
+
+predict_unlabeled()
