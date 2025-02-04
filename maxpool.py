@@ -8,7 +8,7 @@ class Maxpool2:
 
         for i in range(new_h):
             for j in range(new_w):
-                im_region = image[(i * 2):(i * 2 + 2), (j * 2):(j * 2 + 2)]
+                im_region = image[(i * 2):(i * 2 + 2), (j * 2):(j * 2 + 2), :]
                 yield im_region, i, j
 
     def forward(self, input):
