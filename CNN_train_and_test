@@ -9,27 +9,70 @@ DATASET_PATH = "dataset/path"
 loader = BinaryDatasetLoader(DATASET_PATH)
 X_train, y_train = loader.load_data("train_X.bin", "train_y.bin")
 X_test, y_test = loader.load_data("test_X.bin", "test_y.bin")
-
+X_train = (X_train - np.mean(X_train)) / np.std(X_train)
+X_test = (X_test - np.mean(X_test)) / np.std(X_test)
 conv = Conv3x3(8)
-pool = Maxpool2()
-softmax = Softmax(17672, 10)  # Must match expected input size (47*47*8 after pooling and convolution)
+pool = Maxpool2() # changes 96*96*8 to 47*47*8
+softmax = Softmax(47*47*8, 10)  # Must match expected input size
 
 def forward(image):
-    out = conv.forward(image)
-    out = pool.forward(out)
-    out = softmax.forward(out)
+    out = conv.forward(image)   # Convolution
+    out = pool.forward(out)     # Max Pooling
+    out = softmax.forward(out)  # Softmax
     return out
 
-def train(num_epochs, learning_rate):
+def cross_entropy_loss(y_pred, y_true):
+    """
+    Computes the cross-entropy loss.
+    - y_pred: Predicted probabilities (output of softmax).
+    - y_true: True label (integer).
+    """
+    # One-hot encode the true label
+    one_hot = np.zeros(10)  # Assuming 10 classes
+    one_hot[y_true-1] = 1
+
+    return -np.sum(one_hot * np.log(y_pred + 1e-10))  # Add small epsilon to avoid log(0)
+
+def train(num_epochs, learning_rate, batch_size=50):
     for epoch in range(num_epochs):
+        print(f"Epoch {epoch + 1}/{num_epochs}")
         correct = 0
-        for i in range(len(X_train)):
-            out = forward(X_train[i])
-            pred = np.argmax(out)
-            if pred == y_train[i]:
-                correct += 1
-        acc = correct / len(X_train)
-        print(f"Epoch {epoch + 1}: Accuracy {acc:.4f}")
+        total_loss = 0
+
+        # Shuffle training data
+        indices = np.arange(len(X_train))
+        np.random.shuffle(indices)
+        X_train_shuffled = X_train[indices]
+        y_train_shuffled = y_train[indices]
+
+        # Mini-batch training
+        for i in range(0, len(X_train_shuffled), batch_size):
+            X_batch = X_train_shuffled[i:i + batch_size]
+            y_batch = y_train_shuffled[i:i + batch_size]
+            batch_correct = 0
+
+            batch_loss = 0
+            for j in range(len(X_batch)):
+                out = forward(X_batch[j])
+                pred = np.argmax(out)
+                if pred == y_batch[j]:
+                    correct += 1
+                    batch_correct += 1
+                loss = cross_entropy_loss(out, y_batch[j])
+                batch_loss += (loss/batch_size)
+
+                d_L_d_out = out
+                d_L_d_out[y_batch[j]-1] -= 1  # Gradient of cross-entropy loss
+                d_L_d_out = softmax.backward(d_L_d_out, learning_rate)
+                d_L_d_out = pool.backward(d_L_d_out)
+                d_L_d_out = conv.backward(d_L_d_out, learning_rate)
+
+            total_loss += batch_loss
+
+        acc = correct / len(X_train_shuffled)
+        avg_loss = total_loss / (len(X_train_shuffled) // batch_size)
+        print(f"Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}")
+    return {"conv_filters": conv.filters, "conv_bias": conv.biases, "softmax_weights": softmax.weights, "softmax_bias":softmax.biases}
 
 def predict_unlabeled():
     X_unlabeled = loader.load_unlabeled_data()
@@ -41,6 +84,6 @@ def predict_unlabeled():
         predictions.append((pred_class, certainty))
         print(f"Image {i}: Predicted Class = {pred_class}, Certainty = {certainty:.4f}")
 
-train(num_epochs=5, learning_rate=0.01)
+trained_params = train(num_epochs=5, learning_rate=0.01) # Replace their relative parameters in the conv and softmax files to reuse on a new set of images
 
 predict_unlabeled()
